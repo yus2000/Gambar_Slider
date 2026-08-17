@@ -18,7 +18,6 @@ function openDB() {
     });
 }
 
-// Simpan/Ambil Pengaturan (API Key, Folder ID, Password)
 async function setSetting(key, val) {
     const db = await openDB();
     const tx = db.transaction("settings", "readwrite");
@@ -34,12 +33,11 @@ async function getSetting(key) {
     });
 }
 
-// Simpan/Ambil File Media (Blob)
 async function saveMediaFiles(fileList) {
     const db = await openDB();
     const tx = db.transaction("media", "readwrite");
     const store = tx.objectStore("media");
-    store.clear(); // Hapus cache lama, ganti dengan yang baru
+    store.clear();
     fileList.forEach(item => store.put(item));
 }
 

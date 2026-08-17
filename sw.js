@@ -6,7 +6,7 @@ const ASSETS = [
   './style.css',
   './db.js',
   './app.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css'
+  './sw.js'
 ];
 
 self.addEventListener('install', (e) => {

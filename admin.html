@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Panel - Drive Sync</title>
+    <title>Admin Panel - Google Drive Sync</title>
     <style>
         body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 20px; }
         .card { background: white; padding: 25px; border-radius: 8px; max-width: 500px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -11,50 +11,37 @@
         button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
         button:hover { background: #0056b3; }
         #admin-panel { display: none; }
-        #status { font-weight: bold; color: #28a745; margin-top: 10px; word-break: break-all; }
-        label { font-weight: bold; margin-top: 10px; display: block; }
+        #status { font-weight: bold; color: #28a745; margin-top: 10px; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <!-- Form Login -->
-    <!-- <div id="login-section">
+    <div id="login-section">
         <h2>Login Admin</h2>
         <input type="password" id="passInput" placeholder="Masukkan Password Admin">
         <button onclick="login()">Masuk</button>
-    </div> -->
-    <form id="login-form" onsubmit="handleLogin(event)">
-        <h3>Login Admin</h3>
-        
-        <input type="password" id="admin-password" placeholder="Masukkan Password Admin" required>
-        
-        <button type="submit">Login</button>
-    </form>
+    </div>
 
-    <p id="login-status" style="color: red;"></p>
-
-
-    <!-- Panel Pengaturan Admin -->
     <div id="admin-panel">
         <h2>Pengaturan Google Drive</h2>
         
-        <label for="apiKeyInput">Google Drive API Key:</label>
+        <label>Google Drive API Key:</label>
         <input type="text" id="apiKeyInput" placeholder="AIzaSy...">
         
-        <label for="folderIdInput">Google Drive Folder ID:</label>
+        <label>Google Drive Folder ID:</label>
         <input type="text" id="folderIdInput" placeholder="1A2b3C4d5E...">
         
-        <label for="syncIntervalInput">Interval Auto-Sync (Menit):</label>
+        <label>Interval Auto-Sync (Menit):</label>
         <input type="number" id="syncIntervalInput" min="1" max="60" placeholder="Default: 2">
 
-        <label for="newPassInput">Password Admin Baru (Opsional):</label>
+        <label>Password Admin Baru (Opsional):</label>
         <input type="password" id="newPassInput" placeholder="Ubah Password">
 
         <button onclick="saveSettings()">Simpan Pengaturan</button>
         <hr style="margin: 15px 0;">
         
-        <button onclick="manualSync()" style="background: #28a745;">🔄 Sync Manual Sekarang</button>
+        <button onclick="syncGDriveManually()" style="background: #28a745;">🔄 Sync Manual Sekarang</button>
         <button onclick="location.href='index.html'" style="background: #6c757d;">Kembali ke Slider</button>
         
         <p id="status"></p>
@@ -64,12 +51,12 @@
 <script src="db.js"></script>
 <script>
     async function login() {
-        const savedPass = (await getSetting("admin_pass")) || "12345"; // Default pass: 12345
+        const savedPass = (await getSetting("admin_pass")) || "12345";
         const inputPass = document.getElementById("passInput").value;
         if (inputPass === savedPass) {
             document.getElementById("login-section").style.display = "none";
             document.getElementById("admin-panel").style.display = "block";
-            await loadSettings();
+            loadSettings();
         } else {
             alert("Password Salah!");
         }
@@ -95,14 +82,14 @@
         alert("Pengaturan Berhasil Disimpan!");
     }
 
-    async function manualSync() {
+    async function syncGDriveManually() {
         const apiKey = await getSetting("api_key");
         const folderId = await getSetting("folder_id");
         const statusEl = document.getElementById("status");
 
         if (!apiKey || !folderId) return alert("API Key dan Folder ID wajib diisi!");
         
-        statusEl.innerText = "Mengambil daftar file dari Google Drive...";
+        statusEl.innerText = "Mengambil daftar file...";
 
         try {
             const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
@@ -141,97 +128,9 @@
 
         } catch (err) {
             console.error(err);
-            statusEl.innerText = "❌ Gagal Sinkronisasi. Periksa koneksi internet / API Key / Folder ID.";
+            statusEl.innerText = "❌ Gagal Sinkronisasi. Periksa koneksi/API Key/Folder ID.";
         }
     }
-
-    async function syncDrive() {
-        const apiKey = document.getElementById("api-key").value.trim();
-        const folderId = document.getElementById("folder-id").value.trim();
-        const statusEl = document.getElementById("sync-status");
-
-        if (!apiKey || !folderId) {
-            statusEl.innerText = "❌ Harap isi API Key dan Folder ID terlebih dahulu.";
-            return;
-        }
-
-        statusEl.innerText = "⏳ Sedang menghubungkan ke Google Drive...";
-
-        try {
-            // Query Google Drive API v3 dengan Anti-Cache timestamp
-            const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
-            const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,mimeType,modifiedTime)&key=${apiKey}&_t=${Date.now()}`;
-
-            const response = await fetch(url, { cache: "no-store" });
-            const data = await response.json();
-
-            // 1. Cek Error dari Response Google API
-            if (!response.ok) {
-                if (data.error) {
-                    if (data.error.code === 400) {
-                        throw new Error("Folder ID tidak valid/salah format.");
-                    } else if (data.error.code === 403) {
-                        throw new Error("API Key salah, atau Google Drive API belum diaktifkan di GCP.");
-                    } else if (data.error.code === 404) {
-                        throw new Error("Folder ID tidak ditemukan di Google Drive.");
-                    } else {
-                        throw new Error(`Google API Error (${data.error.code}): ${data.error.message}`);
-                    }
-                }
-                throw new Error(`Gagal terhubung ke Google API. (Status: ${response.status})`);
-            }
-
-            // 2. Filter hanya File Gambar dan Video
-            const files = data.files.filter(f => 
-                f.mimeType.startsWith("image/") || f.mimeType.startsWith("video/")
-            );
-
-            if (files.length === 0) {
-                statusEl.innerText = "⚠️ Folder terhubung, tetapi tidak ada file Gambar/Video di dalamnya (atau akses folder belum dibuat 'Publik').";
-                return;
-            }
-
-            statusEl.innerText = `⏳ Mengunduh ${files.length} file dari Google Drive...`;
-
-            // 3. Unduh Isi Media & Simpan ke IndexedDB
-            const downloadedMedia = [];
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                statusEl.innerText = `⏳ Mengunduh (${i + 1}/${files.length}): ${file.name}`;
-                
-                const fileUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${apiKey}&_t=${Date.now()}`;
-                const mediaRes = await fetch(fileUrl, { cache: "no-store" });
-                
-                if (!mediaRes.ok) {
-                    console.warn(`Gagal mengunduh file: ${file.name}`);
-                    continue;
-                }
-
-                const blob = await mediaRes.blob();
-                downloadedMedia.push({
-                    id: file.id,
-                    name: file.name,
-                    type: file.mimeType.startsWith("video") ? "video" : "image",
-                    modifiedTime: file.modifiedTime,
-                    blob: blob
-                });
-            }
-
-            // Simpan ke IndexedDB lokal
-            await saveMediaFiles(downloadedMedia);
-
-            // Simpan Pengaturan API Key & Folder ID
-            await setSetting("api_key", apiKey);
-            await setSetting("folder_id", folderId);
-
-            statusEl.innerText = `✅ Sinkronisasi Berhasil! (${downloadedMedia.length} file siap ditayangkan)`;
-
-        } catch (err) {
-            console.error("Detail Error Sync:", err);
-            statusEl.innerText = `❌ ${err.message}`;
-        }
-    }
-
 </script>
 </body>
 </html>

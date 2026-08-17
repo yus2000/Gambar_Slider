@@ -1,32 +1,10 @@
 let slides = [];
 let currentIndex = 0;
 let timer = null;
-const SLIDE_DURATION = 5000; // Durasi gambar (5 detik)
-const REALTIME_CHECK_INTERVAL = 10 * 1000; // Cek tiap 10 detik
-
-function handleLogin(event) {
-    // Mencegah halaman reload otomatis saat form di-submit
-    event.preventDefault();
-
-    const passwordInput = document.getElementById("admin-password").value;
-    const PASSWORD_BENAR = "admin123"; // Ganti dengan password Anda
-
-    if (passwordInput === PASSWORD_BENAR) {
-        // Simpan status login di sessionStorage
-        sessionStorage.setItem("isAdminLoggedIn", "true");
-
-        // Sembunyikan form login & tampilkan panel admin
-        document.getElementById("login-form").style.display = "none";
-        document.getElementById("admin-panel").style.display = "block";
-    } else {
-        document.getElementById("login-status").innerText = "❌ Password salah!";
-    }
-}
-
+const SLIDE_DURATION = 5000;
 
 async function startPlayer() {
     slides = await getAllMedia();
-    
     if (slides.length === 0) {
         document.getElementById("slide-content").innerHTML = 
             `<h3 style="color:white;text-align:center;">Belum ada konten tersimpan.<br>Buka menu Admin & lakukan Sync Google Drive.</h3>`;
@@ -34,9 +12,10 @@ async function startPlayer() {
         renderCurrentSlide();
     }
 
-    // Jalankan Pengecekan Cepat
-    checkRealtimeChanges();
-    setInterval(checkRealtimeChanges, REALTIME_CHECK_INTERVAL);
+    checkAndAutoSync();
+    
+    const savedInterval = (await getSetting("sync_interval")) || 2;
+    setInterval(checkAndAutoSync, savedInterval * 60 * 1000);
 }
 
 function renderCurrentSlide() {
@@ -67,10 +46,7 @@ function nextSlide() {
     renderCurrentSlide();
 }
 
-// ==========================================
-// PENGECEKAN REAL-TIME DENGAN ANTI-CACHE
-// ==========================================
-async function checkRealtimeChanges() {
+async function checkAndAutoSync() {
     if (!navigator.onLine) return;
 
     const apiKey = await getSetting("api_key");
@@ -79,55 +55,52 @@ async function checkRealtimeChanges() {
     if (!apiKey || !folderId) return;
 
     try {
-        // PERBAIKAN 1: Tambahkan &_t=${Date.now()} untuk MENCEGAH BROWSER CACHING
         const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
-        const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,mimeType,modifiedTime)&key=${apiKey}&_t=${Date.now()}`;
+        const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,mimeType,modifiedTime)&key=${apiKey}`;
         
-        const res = await fetch(url, { cache: "no-store" });
+        const res = await fetch(url);
         if (!res.ok) return;
         const data = await res.json();
 
         if (!data.files) return;
 
-        const driveFiles = data.files.filter(f => f.mimeType.startsWith("image/") || f.mimeType.startsWith("video/"));
         const localMedia = await getAllMedia();
+        const driveFiles = data.files.filter(f => f.mimeType.startsWith("image/") || f.mimeType.startsWith("video/"));
         
-        let hasChanges = false;
+        let needSync = false;
 
-        // Bandingkan jumlah atau ID/waktu modifikasi
         if (driveFiles.length !== localMedia.length) {
-            hasChanges = true;
+            needSync = true;
         } else {
             for (let df of driveFiles) {
-                const matched = localMedia.find(lm => lm.id === df.id);
-                if (!matched || matched.modifiedTime !== df.modifiedTime) {
-                    hasChanges = true;
+                const matchedLocal = localMedia.find(lm => lm.id === df.id);
+                if (!matchedLocal || matchedLocal.modifiedTime !== df.modifiedTime) {
+                    needSync = true;
                     break;
                 }
             }
         }
 
-        if (hasChanges) {
-            console.log("⚡ Ada perubahan di Drive! Mengunduh ulang...");
-            await updatePlaylistInstantly(driveFiles, apiKey);
+        if (needSync) {
+            console.log("Perubahan di Google Drive terdeteksi. Memulai Auto-Sync...");
+            await performBackgroundSync(driveFiles, apiKey);
         }
 
     } catch (err) {
-        console.warn("Gagal mengecek update Drive:", err);
+        console.warn("Auto-sync terhenti karena kendala koneksi.");
     }
 }
 
-async function updatePlaylistInstantly(driveFiles, apiKey) {
-    const updatedMedia = [];
+async function performBackgroundSync(driveFiles, apiKey) {
+    const downloadedMedia = [];
 
     for (let file of driveFiles) {
         try {
-            // Anti-cache juga pada saat download file fisik
-            const fileUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${apiKey}&_t=${Date.now()}`;
-            const blobRes = await fetch(fileUrl, { cache: "no-store" });
+            const fileUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${apiKey}`;
+            const blobRes = await fetch(fileUrl);
             const blob = await blobRes.blob();
 
-            updatedMedia.push({
+            downloadedMedia.push({
                 id: file.id,
                 name: file.name,
                 type: file.mimeType.startsWith("video") ? "video" : "image",
@@ -135,28 +108,19 @@ async function updatePlaylistInstantly(driveFiles, apiKey) {
                 blob: blob
             });
         } catch (e) {
-            console.error("Gagal unduh file:", file.name);
+            console.error("Gagal mengunduh file:", file.name);
             return;
         }
     }
 
-    // PERBAIKAN 2: Simpan data baru
-    await saveMediaFiles(updatedMedia);
-    
-    // Perbarui variabel slides di memori lokal
+    await saveMediaFiles(downloadedMedia);
     slides = await getAllMedia();
-
+    
     if (currentIndex >= slides.length) {
         currentIndex = 0;
     }
 
-    // Jika slider sedang menampilkan pesan kosong, putar langsung
-    if (document.getElementById("slide-content").innerText.includes("Belum ada konten")) {
-        renderCurrentSlide();
-    } else {
-        // Tampilkan slide terbaru pada putaran berikutnya
-        console.log("✅ Playlist berhasil diperbarui untuk putaran berikutnya!");
-    }
+    console.log("✅ Auto-sync berhasil!");
 }
 
 function toggleFullScreen() {
