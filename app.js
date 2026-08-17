@@ -1,8 +1,8 @@
 let slides = [];
 let currentIndex = 0;
 let timer = null;
-const SLIDE_DURATION = 5000; // Durasi tampil gambar (5 detik)
-const REALTIME_CHECK_INTERVAL = 10 * 1000; // Cek perubahan tiap 10 detik
+const SLIDE_DURATION = 5000; // Durasi gambar (5 detik)
+const REALTIME_CHECK_INTERVAL = 10 * 1000; // Cek tiap 10 detik
 
 async function startPlayer() {
     slides = await getAllMedia();
@@ -14,7 +14,7 @@ async function startPlayer() {
         renderCurrentSlide();
     }
 
-    // Jalankan pengecekan cepat secara berkala
+    // Jalankan Pengecekan Cepat
     checkRealtimeChanges();
     setInterval(checkRealtimeChanges, REALTIME_CHECK_INTERVAL);
 }
@@ -26,7 +26,6 @@ function renderCurrentSlide() {
     const container = document.getElementById("slide-content");
     const item = slides[currentIndex];
     
-    // Revoke URL lokal lama untuk mencegah kebocoran memori (memory leak)
     if (container.dataset.blobUrl) {
         URL.revokeObjectURL(container.dataset.blobUrl);
     }
@@ -49,10 +48,9 @@ function nextSlide() {
 }
 
 // ==========================================
-// PENGECEKAN REAL-TIME DI LATAR BELAKANG
+// PENGECEKAN REAL-TIME DENGAN ANTI-CACHE
 // ==========================================
 async function checkRealtimeChanges() {
-    // Jika tidak ada koneksi internet, lewati (tetap jalan offline)
     if (!navigator.onLine) return;
 
     const apiKey = await getSetting("api_key");
@@ -61,11 +59,11 @@ async function checkRealtimeChanges() {
     if (!apiKey || !folderId) return;
 
     try {
-        // Panggil metadata ringan dari Google Drive (hanya butuh waktu < 1 detik)
+        // PERBAIKAN 1: Tambahkan &_t=${Date.now()} untuk MENCEGAH BROWSER CACHING
         const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
-        const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,mimeType,modifiedTime)&key=${apiKey}`;
+        const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,mimeType,modifiedTime)&key=${apiKey}&_t=${Date.now()}`;
         
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
 
@@ -76,11 +74,10 @@ async function checkRealtimeChanges() {
         
         let hasChanges = false;
 
-        // 1. Cek jika jumlah file berbeda
+        // Bandingkan jumlah atau ID/waktu modifikasi
         if (driveFiles.length !== localMedia.length) {
             hasChanges = true;
         } else {
-            // 2. Cek jika ada file yang diubah / diganti
             for (let df of driveFiles) {
                 const matched = localMedia.find(lm => lm.id === df.id);
                 if (!matched || matched.modifiedTime !== df.modifiedTime) {
@@ -90,14 +87,13 @@ async function checkRealtimeChanges() {
             }
         }
 
-        // Jika terdeteksi ada perubahan di Drive, langsung update playlist!
         if (hasChanges) {
-            console.log("⚡ Perubahan terdeteksi di Google Drive! Memperbarui slider...");
+            console.log("⚡ Ada perubahan di Drive! Mengunduh ulang...");
             await updatePlaylistInstantly(driveFiles, apiKey);
         }
 
     } catch (err) {
-        console.warn("Pengecekan real-time terhenti:", err);
+        console.warn("Gagal mengecek update Drive:", err);
     }
 }
 
@@ -106,8 +102,9 @@ async function updatePlaylistInstantly(driveFiles, apiKey) {
 
     for (let file of driveFiles) {
         try {
-            const fileUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${apiKey}`;
-            const blobRes = await fetch(fileUrl);
+            // Anti-cache juga pada saat download file fisik
+            const fileUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${apiKey}&_t=${Date.now()}`;
+            const blobRes = await fetch(fileUrl, { cache: "no-store" });
             const blob = await blobRes.blob();
 
             updatedMedia.push({
@@ -118,25 +115,27 @@ async function updatePlaylistInstantly(driveFiles, apiKey) {
                 blob: blob
             });
         } catch (e) {
-            console.error("Gagal mengunduh file:", file.name);
+            console.error("Gagal unduh file:", file.name);
             return;
         }
     }
 
-    // Simpan ke IndexedDB
+    // PERBAIKAN 2: Simpan data baru
     await saveMediaFiles(updatedMedia);
     
-    // Perbarui array slides di memori
-    slides = updatedMedia;
+    // Perbarui variabel slides di memori lokal
+    slides = await getAllMedia();
 
-    // Koreksi index agar tidak out of bounds jika ada file yang dihapus
     if (currentIndex >= slides.length) {
         currentIndex = 0;
     }
 
-    // Jika slider sebelumnya kosong, langsung tampilkan
-    if (document.getElementById("slide-content").innerHTML.includes("Belum ada konten")) {
+    // Jika slider sedang menampilkan pesan kosong, putar langsung
+    if (document.getElementById("slide-content").innerText.includes("Belum ada konten")) {
         renderCurrentSlide();
+    } else {
+        // Tampilkan slide terbaru pada putaran berikutnya
+        console.log("✅ Playlist berhasil diperbarui untuk putaran berikutnya!");
     }
 }
 
