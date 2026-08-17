@@ -19,11 +19,21 @@
 
 <div class="card">
     <!-- Form Login -->
-    <div id="login-section">
+    <!-- <div id="login-section">
         <h2>Login Admin</h2>
         <input type="password" id="passInput" placeholder="Masukkan Password Admin">
         <button onclick="login()">Masuk</button>
-    </div>
+    </div> -->
+    <form id="login-form" onsubmit="handleLogin(event)">
+        <h3>Login Admin</h3>
+        
+        <input type="password" id="admin-password" placeholder="Masukkan Password Admin" required>
+        
+        <button type="submit">Login</button>
+    </form>
+
+    <p id="login-status" style="color: red;"></p>
+
 
     <!-- Panel Pengaturan Admin -->
     <div id="admin-panel">

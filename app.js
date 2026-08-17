@@ -4,6 +4,26 @@ let timer = null;
 const SLIDE_DURATION = 5000; // Durasi gambar (5 detik)
 const REALTIME_CHECK_INTERVAL = 10 * 1000; // Cek tiap 10 detik
 
+function handleLogin(event) {
+    // Mencegah halaman reload otomatis saat form di-submit
+    event.preventDefault();
+
+    const passwordInput = document.getElementById("admin-password").value;
+    const PASSWORD_BENAR = "admin123"; // Ganti dengan password Anda
+
+    if (passwordInput === PASSWORD_BENAR) {
+        // Simpan status login di sessionStorage
+        sessionStorage.setItem("isAdminLoggedIn", "true");
+
+        // Sembunyikan form login & tampilkan panel admin
+        document.getElementById("login-form").style.display = "none";
+        document.getElementById("admin-panel").style.display = "block";
+    } else {
+        document.getElementById("login-status").innerText = "❌ Password salah!";
+    }
+}
+
+
 async function startPlayer() {
     slides = await getAllMedia();
     
