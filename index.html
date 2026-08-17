@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Display Slider - GDrive</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="slider-container">
+        <div id="slide-content">
+            <h2 style="color: white; text-align: center;">Memuat konten offline...</h2>
+        </div>
+    </div>
+
+    <div id="controls">
+        <button onclick="toggleFullScreen()">⛶ Fullscreen</button>
+        <button onclick="location.href='admin.html'">⚙️ Admin</button>
+    </div>
+
+    <script src="db.js"></script>
+    <script src="app.js"></script>
+    <script>
+        // Register Service Worker untuk dukungan Offline total
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js');
+        }
+    </script>
+</body>
+</html>
